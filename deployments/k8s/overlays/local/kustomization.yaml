@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+namePrefix: local-
+replicas:
+  - name: gateway
+    count: 1
+  - name: orchestrator
+    count: 1

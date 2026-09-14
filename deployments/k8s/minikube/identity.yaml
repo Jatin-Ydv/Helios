@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity
+  labels: { app: identity }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: identity } }
+  template:
+    metadata:
+      labels: { app: identity, app.kubernetes.io/part-of: helios }
+    spec:
+      initContainers:
+        - name: wait
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z postgres 5432 && nc -z redis 6379; do sleep 2; done"]
+      containers:
+        - name: identity
+          image: helios/identity:minikube
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-secrets, key: POSTGRES_DSN_IDENTITY } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-secrets, key: JWT_SECRET } }
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 15 }
+          resources:
+            requests: { cpu: 25m, memory: 48Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: identity }
+spec:
+  selector: { app: identity }
+  ports: [{ port: 8080, targetPort: http }]

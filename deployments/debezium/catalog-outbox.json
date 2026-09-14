@@ -1,0 +1,31 @@
+{
+  "name": "helios-catalog-outbox",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "helios",
+    "database.password": "helios",
+    "database.dbname": "catalog",
+    "database.server.name": "helios.catalog",
+    "topic.prefix": "helios.cdc.catalog",
+    "table.include.list": "public.outbox",
+    "slot.name": "helios_catalog_outbox",
+    "publication.name": "helios_catalog_outbox",
+    "tombstones.on.delete": "false",
+    "transforms": "unwrap,route",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "true",
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": ".*",
+    "transforms.route.replacement": "helios.cdc.catalog.outbox",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false",
+    "heartbeat.interval.ms": "10000",
+    "decimal.handling.mode": "string",
+    "slot.drop.on.stop": "false"
+  }
+}

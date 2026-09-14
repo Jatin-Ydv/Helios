@@ -1,0 +1,106 @@
+# Default values — override with values-minikube.yaml (or a prod values file).
+namespace: helios
+createNamespace: true
+
+busybox:
+  image: busybox:1.36
+
+imagePullPolicy: IfNotPresent
+imageTag: minikube
+imageRegistry: "" # empty → helios/<service>:<tag>
+
+config:
+  ENVIRONMENT: local
+  LOG_LEVEL: info
+  HTTP_ADDR: ":8080"
+  JWT_ISSUER: helios-identity
+  INTERNAL_TOKEN: helios-internal-dev
+  OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4318
+  KAFKA_BROKERS: kafka:9092
+  REDIS_ADDR: redis:6379
+  AEROSPIKE_HOSTS: aerospike:3000
+  AEROSPIKE_NAMESPACE: helios
+  GRPC_ADDR: ":9090"
+  ORDER_GRPC: order:9090
+  INVENTORY_GRPC: inventory:9090
+  PAYMENT_GRPC: payment:9090
+  FULFILLMENT_GRPC: fulfillment:9090
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  ORDER_URL: http://order:8080
+  INVENTORY_URL: http://inventory:8080
+  PAYMENT_URL: http://payment:8080
+  FULFILLMENT_URL: http://fulfillment:8080
+  IDENTITY_URL: http://identity:8080
+  CATALOG_URL: http://catalog:8080
+  SEARCH_URL: http://search:8080
+  ORCHESTRATOR_URL: http://orchestrator:8080
+  NOTIFICATION_URL: http://notification:8080
+
+secrets:
+  JWT_SECRET: helios-minikube-dev-secret
+  postgresUser: helios
+  postgresPassword: helios
+  postgresHost: postgres
+  postgresPort: "5432"
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 384Mi }
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { memory: 96Mi }
+
+aerospike:
+  enabled: true
+  image: aerospike/aerospike-server:7.2
+  resources:
+    requests: { cpu: 50m, memory: 384Mi }
+    limits: { memory: 512Mi }
+
+kafka:
+  enabled: true
+  image: apache/kafka:3.8.1
+  clusterId: MkU3OEVBNTcwNTJENDM2Qk
+  heapOpts: "-Xms256m -Xmx256m"
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 640Mi }
+
+elasticsearch:
+  enabled: true
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+  javaOpts: "-Xms192m -Xmx192m"
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 640Mi }
+
+jaeger:
+  enabled: true
+  image: jaegertracing/all-in-one:1.66.0
+  nodePort: 30686
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 192Mi }
+
+kafkaInit:
+  enabled: true
+
+# App defaults (merged per-service in values-minikube)
+appDefaults:
+  replicas: 1
+  resources:
+    requests: { cpu: 25m, memory: 48Mi }
+    limits: { memory: 128Mi }
+  grpc: false
+
+apps: {}
+
+gateway:
+  nodePort: 30080

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity
+  labels: { app: identity, app.kubernetes.io/part-of: helios }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: identity } }
+  template:
+    metadata:
+      labels: { app: identity, app.kubernetes.io/part-of: helios }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080" }
+    spec:
+      terminationGracePeriodSeconds: 25
+      containers:
+        - name: identity
+          image: helios/identity:local
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-pg, key: identity } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-jwt, key: secret } }
+          readinessProbe: { httpGet: { path: /readyz, port: http } }
+          livenessProbe: { httpGet: { path: /healthz, port: http } }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext: { readOnlyRootFilesystem: true, runAsNonRoot: true }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: identity }
+spec:
+  selector: { app: identity }
+  ports: [{ port: 8080, targetPort: http }]

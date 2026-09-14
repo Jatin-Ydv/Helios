@@ -1,0 +1,17 @@
+════════════════════════════════════════
+ Helios (Helm)
+════════════════════════════════════════
+
+Release:   {{ .Release.Name }}
+Namespace: {{ .Values.namespace }}
+
+Port-forward (WSL / Docker Desktop):
+
+  kubectl -n {{ .Values.namespace }} port-forward svc/gateway 18080:8080
+  kubectl -n {{ .Values.namespace }} port-forward svc/jaeger 16686:16686
+
+Then:
+
+  GATEWAY_URL=http://127.0.0.1:18080 make demo
+
+Docs: docs/HELM.md

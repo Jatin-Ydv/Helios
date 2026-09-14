@@ -1,0 +1,21 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: helios-core
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: helios
+---
+# Prefer not to evict both payment replicas during a node drain — that is the
+# circuit-breaker dependency for checkout.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: payment

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helios-config
+data:
+  ENVIRONMENT: "prod"
+  LOG_LEVEL: "info"
+  HTTP_ADDR: ":8080"
+  JWT_ISSUER: "helios-identity"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector.observability:4318"
+  KAFKA_BROKERS: "kafka.helios.svc:9092"
+  REDIS_ADDR: "redis.helios.svc:6379"
+  ELASTICSEARCH_URL: "http://elasticsearch.helios.svc:9200"
+  INTERNAL_TOKEN: "replace-from-sealed-secret"

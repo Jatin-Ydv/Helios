@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helios-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "helios.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helios-secrets
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "helios.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  JWT_SECRET: {{ .Values.secrets.JWT_SECRET | quote }}
+  {{- $u := .Values.secrets.postgresUser }}
+  {{- $p := .Values.secrets.postgresPassword }}
+  {{- $h := .Values.secrets.postgresHost }}
+  {{- $port := .Values.secrets.postgresPort }}
+  POSTGRES_DSN_IDENTITY: {{ printf "postgres://%s:%s@%s:%s/identity?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_CATALOG: {{ printf "postgres://%s:%s@%s:%s/catalog?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_INVENTORY: {{ printf "postgres://%s:%s@%s:%s/inventory?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_ORDERS: {{ printf "postgres://%s:%s@%s:%s/orders?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_PAYMENT: {{ printf "postgres://%s:%s@%s:%s/payment?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_FULFILLMENT: {{ printf "postgres://%s:%s@%s:%s/fulfillment?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_ORCHESTRATOR: {{ printf "postgres://%s:%s@%s:%s/orchestrator?sslmode=disable" $u $p $h $port | quote }}
+  POSTGRES_DSN_NOTIFICATION: {{ printf "postgres://%s:%s@%s:%s/notification?sslmode=disable" $u $p $h $port | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "helios.labels" . | nindent 4 }}
+data:
+  00-init.sh: |
+{{ .Files.Get "files/00-init.sh" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-init-script
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "helios.labels" . | nindent 4 }}
+data:
+  kafka-init.sh: |
+{{ .Files.Get "files/kafka-init.sh" | indent 4 }}
+{{- if .Values.aerospike.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aerospike-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "helios.labels" . | nindent 4 }}
+data:
+  aerospike.conf: |
+{{ .Files.Get "configs/aerospike.conf" | indent 4 }}
+{{- end }}

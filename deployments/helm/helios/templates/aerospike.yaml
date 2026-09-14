@@ -1,0 +1,63 @@
+{{- if .Values.aerospike.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerospike
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: aerospike
+    {{- include "helios.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: aerospike
+  template:
+    metadata:
+      labels:
+        app: aerospike
+    spec:
+      containers:
+        - name: aerospike
+          image: {{ .Values.aerospike.image }}
+          args: ["--config-file", "/etc/aerospike/aerospike.conf"]
+          ports:
+            - { containerPort: 3000, name: service }
+            - { containerPort: 3001, name: fabric }
+            - { containerPort: 3002, name: heartbeat }
+            - { containerPort: 3003, name: info }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/aerospike
+          readinessProbe:
+            tcpSocket: { port: service }
+            initialDelaySeconds: 8
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: service }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.aerospike.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: aerospike-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aerospike
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: aerospike
+    {{- include "helios.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: aerospike
+  ports:
+    - { name: service, port: 3000, targetPort: service }
+    - { name: info, port: 3003, targetPort: info }
+{{- end }}

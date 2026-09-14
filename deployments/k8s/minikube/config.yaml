@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helios-config
+data:
+  ENVIRONMENT: "local"
+  LOG_LEVEL: "info"
+  HTTP_ADDR: ":8080"
+  JWT_ISSUER: "helios-identity"
+  INTERNAL_TOKEN: "helios-internal-dev"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger:4318"
+  KAFKA_BROKERS: "kafka:9092"
+  REDIS_ADDR: "redis:6379"
+  AEROSPIKE_HOSTS: "aerospike:3000"
+  AEROSPIKE_NAMESPACE: "helios"
+  GRPC_ADDR: ":9090"
+  ORDER_GRPC: "order:9090"
+  INVENTORY_GRPC: "inventory:9090"
+  PAYMENT_GRPC: "payment:9090"
+  FULFILLMENT_GRPC: "fulfillment:9090"
+  ELASTICSEARCH_URL: "http://elasticsearch:9200"
+  ORDER_URL: "http://order:8080"
+  INVENTORY_URL: "http://inventory:8080"
+  PAYMENT_URL: "http://payment:8080"
+  FULFILLMENT_URL: "http://fulfillment:8080"
+  IDENTITY_URL: "http://identity:8080"
+  CATALOG_URL: "http://catalog:8080"
+  SEARCH_URL: "http://search:8080"
+  ORCHESTRATOR_URL: "http://orchestrator:8080"
+  NOTIFICATION_URL: "http://notification:8080"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helios-secrets
+type: Opaque
+stringData:
+  JWT_SECRET: "helios-minikube-dev-secret"
+  POSTGRES_DSN_IDENTITY: "postgres://helios:helios@postgres:5432/identity?sslmode=disable"
+  POSTGRES_DSN_CATALOG: "postgres://helios:helios@postgres:5432/catalog?sslmode=disable"
+  POSTGRES_DSN_INVENTORY: "postgres://helios:helios@postgres:5432/inventory?sslmode=disable"
+  POSTGRES_DSN_ORDERS: "postgres://helios:helios@postgres:5432/orders?sslmode=disable"
+  POSTGRES_DSN_PAYMENT: "postgres://helios:helios@postgres:5432/payment?sslmode=disable"
+  POSTGRES_DSN_FULFILLMENT: "postgres://helios:helios@postgres:5432/fulfillment?sslmode=disable"
+  POSTGRES_DSN_ORCHESTRATOR: "postgres://helios:helios@postgres:5432/orchestrator?sslmode=disable"
+  POSTGRES_DSN_NOTIFICATION: "postgres://helios:helios@postgres:5432/notification?sslmode=disable"

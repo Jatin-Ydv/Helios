@@ -1,0 +1,12 @@
+apiVersion: v2
+name: helios
+description: Helios multi-tenant commerce platform (apps + local infra)
+type: application
+version: 0.1.0
+appVersion: "minikube"
+keywords:
+  - microservices
+  - commerce
+  - kafka
+maintainers:
+  - name: Helios

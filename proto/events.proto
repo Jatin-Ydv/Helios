@@ -1,0 +1,46 @@
+syntax = "proto3";
+package helios.events.v1;
+
+// Canonical event envelope. Kafka payloads are JSON today (operational
+// friendliness, jq-able DLQs). This proto is the schema of record for
+// evolution: additive fields only, never reuse numbers, never rename.
+message Envelope {
+  int32 spec_version = 1;
+  string event_id = 2;
+  string event_type = 3;
+  int32 event_version = 4;
+  string occurred_at = 5;
+  string producer = 6;
+  string tenant_id = 7;
+  string correlation_id = 8;
+  string causation_id = 9;
+  string aggregate_type = 10;
+  string aggregate_id = 11;
+  string idempotency_key = 12;
+  map<string, string> trace = 13;
+  bytes payload = 14;
+}
+
+message Product {
+  string product_id = 1;
+  string sku = 2;
+  string name = 3;
+  int64 amount = 4;
+  string currency = 5;
+  bool active = 6;
+}
+
+message Order {
+  string order_id = 1;
+  string customer_id = 2;
+  string status = 3;
+  int64 amount = 4;
+  string currency = 5;
+  repeated Line items = 6;
+}
+
+message Line {
+  string sku = 1;
+  int64 quantity = 2;
+  int64 unit_amount = 3;
+}

@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: helios
+resources:
+  - namespace.yaml
+  - config.yaml
+  - postgres.yaml
+  - redis.yaml
+  - aerospike.yaml
+  - kafka.yaml
+  - elasticsearch.yaml
+  - jaeger.yaml
+  - kafka-init.yaml
+  - identity.yaml
+  - catalog.yaml
+  - inventory.yaml
+  - order.yaml
+  - payment.yaml
+  - fulfillment.yaml
+  - orchestrator.yaml
+  - search.yaml
+  - notification.yaml
+  - gateway.yaml
+images:
+  - name: helios/identity
+    newTag: minikube
+  - name: helios/catalog
+    newTag: minikube
+  - name: helios/inventory
+    newTag: minikube
+  - name: helios/order
+    newTag: minikube
+  - name: helios/payment
+    newTag: minikube
+  - name: helios/fulfillment
+    newTag: minikube
+  - name: helios/orchestrator
+    newTag: minikube
+  - name: helios/search
+    newTag: minikube
+  - name: helios/notification
+    newTag: minikube
+  - name: helios/gateway
+    newTag: minikube
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - 00-init.sh
+  - name: kafka-init-script
+    files:
+      - kafka-init.sh
+generatorOptions:
+  disableNameSuffixHash: true

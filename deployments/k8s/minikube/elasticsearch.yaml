@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  labels: { app: elasticsearch }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: elasticsearch } }
+  template:
+    metadata:
+      labels: { app: elasticsearch }
+    spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+          env:
+            - { name: discovery.type, value: single-node }
+            - { name: xpack.security.enabled, value: "false" }
+            - { name: xpack.security.http.ssl.enabled, value: "false" }
+            - { name: cluster.routing.allocation.disk.threshold_enabled, value: "false" }
+            - { name: node.store.allow_mmap, value: "false" }
+            - { name: ES_JAVA_OPTS, value: "-Xms192m -Xmx192m" }
+          ports: [{ containerPort: 9200, name: http }]
+          readinessProbe:
+            httpGet: { path: /_cluster/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { memory: 640Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: elasticsearch }
+spec:
+  selector: { app: elasticsearch }
+  ports: [{ port: 9200, targetPort: http }]

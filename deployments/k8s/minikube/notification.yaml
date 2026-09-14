@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification
+  labels: { app: notification }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: notification } }
+  template:
+    metadata:
+      labels: { app: notification, app.kubernetes.io/part-of: helios }
+    spec:
+      initContainers:
+        - name: wait
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"]
+      containers:
+        - name: notification
+          image: helios/notification:minikube
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-secrets, key: POSTGRES_DSN_NOTIFICATION } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-secrets, key: JWT_SECRET } }
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5 }
+          resources:
+            requests: { cpu: 25m, memory: 48Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: notification }
+spec:
+  selector: { app: notification }
+  ports: [{ port: 8080, targetPort: http }]

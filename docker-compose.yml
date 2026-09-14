@@ -1,0 +1,306 @@
+x-app: &app
+  build:
+    context: .
+    dockerfile: deployments/docker/Dockerfile
+  restart: unless-stopped
+  environment: &app-env
+    ENVIRONMENT: local
+    LOG_LEVEL: info
+    HTTP_ADDR: :8080
+    JWT_SECRET: helios-dev-only-change-me
+    JWT_ISSUER: helios-identity
+    INTERNAL_TOKEN: helios-internal-dev
+    REDIS_ADDR: redis:6379
+    AEROSPIKE_HOSTS: aerospike:3000
+    AEROSPIKE_NAMESPACE: helios
+    GRPC_ADDR: :9090
+    ORDER_GRPC: order:9090
+    INVENTORY_GRPC: inventory:9090
+    PAYMENT_GRPC: payment:9090
+    FULFILLMENT_GRPC: fulfillment:9090
+    KAFKA_BROKERS: kafka:9092
+    OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4318
+    ELASTICSEARCH_URL: http://elasticsearch:9200
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    aerospike:
+      condition: service_healthy
+    kafka-init:
+      condition: service_completed_successfully
+    jaeger:
+      condition: service_started
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: helios
+      POSTGRES_PASSWORD: helios
+      POSTGRES_DB: helios
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=12", "-c", "max_wal_senders=12", "-c", "max_connections=200"]
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deployments/docker/postgres-init.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helios"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  aerospike:
+    image: aerospike/aerospike-server:7.2
+    command: ["--config-file", "/etc/aerospike/aerospike.conf"]
+    ports: ["3000:3000"]
+    volumes:
+      - ./deployments/docker/aerospike.conf:/etc/aerospike/aerospike.conf:ro
+    healthcheck:
+      test: ["CMD", "asinfo", "-v", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  kafka:
+    image: apache/kafka:3.8.1
+    hostname: kafka
+    ports: ["9092:9092", "9094:9094"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: heliosKafkCluster0001
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null"]
+      interval: 8s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: kafka:9092
+    volumes:
+      - ./deployments/docker/kafka-init.sh:/init.sh:ro
+    entrypoint: ["/bin/bash", "/init.sh"]
+    restart: "no"
+
+  kafka-connect:
+    image: debezium/connect:2.7
+    ports: ["8083:8083"]
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: helios-connect
+      CONFIG_STORAGE_TOPIC: helios.connect.configs
+      OFFSET_STORAGE_TOPIC: helios.connect.offsets
+      STATUS_STORAGE_TOPIC: helios.connect.status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+    ports: ["9200:9200"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.66.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+      - "4317:4317"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports: ["9090:9090"]
+    volumes:
+      - ./deployments/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deployments/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=24h
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deployments/observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/ds.yml:ro
+      - ./deployments/observability/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dash.yml:ro
+      - ./deployments/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus, jaeger]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports: ["8081:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: helios
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  identity:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: identity } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/identity?sslmode=disable
+    ports: ["8101:8080"]
+
+  catalog:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: catalog } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/catalog?sslmode=disable
+    ports: ["8102:8080"]
+
+  inventory:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: inventory } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/inventory?sslmode=disable
+    ports: ["8104:8080"]
+
+  order:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: order } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/orders?sslmode=disable
+    ports: ["8103:8080"]
+
+  payment:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: payment } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/payment?sslmode=disable
+      PSP_FAILURE_RATE_PCT: "0"
+      PSP_LATENCY_MS: "40"
+    ports: ["8105:8080"]
+
+  fulfillment:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: fulfillment } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/fulfillment?sslmode=disable
+    ports: ["8106:8080"]
+
+  orchestrator:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: orchestrator } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/orchestrator?sslmode=disable
+      ORDER_URL: http://order:8080
+      INVENTORY_URL: http://inventory:8080
+      PAYMENT_URL: http://payment:8080
+      FULFILLMENT_URL: http://fulfillment:8080
+    ports: ["8107:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+      jaeger: { condition: service_started }
+      order: { condition: service_started }
+      inventory: { condition: service_started }
+      payment: { condition: service_started }
+      fulfillment: { condition: service_started }
+
+  search:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: search } }
+    environment:
+      <<: *app-env
+    ports: ["8108:8080"]
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+      jaeger: { condition: service_started }
+
+  notification:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: notification } }
+    environment:
+      <<: *app-env
+      POSTGRES_DSN: postgres://helios:helios@postgres:5432/notification?sslmode=disable
+    ports: ["8109:8080"]
+
+  gateway:
+    <<: *app
+    build: { context: ., dockerfile: deployments/docker/Dockerfile, args: { SERVICE: gateway } }
+    environment:
+      <<: *app-env
+      IDENTITY_URL: http://identity:8080
+      CATALOG_URL: http://catalog:8080
+      SEARCH_URL: http://search:8080
+      INVENTORY_URL: http://inventory:8080
+      ORDER_URL: http://order:8080
+      PAYMENT_URL: http://payment:8080
+      FULFILLMENT_URL: http://fulfillment:8080
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      NOTIFICATION_URL: http://notification:8080
+    ports: ["8080:8080"]
+    depends_on:
+      redis: { condition: service_healthy }
+      identity: { condition: service_started }
+      catalog: { condition: service_started }
+      orchestrator: { condition: service_started }
+
+volumes:
+  postgres-data:

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order
+  labels: { app: order, app.kubernetes.io/part-of: helios }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: order } }
+  template:
+    metadata:
+      labels: { app: order, app.kubernetes.io/part-of: helios }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080" }
+    spec:
+      terminationGracePeriodSeconds: 25
+      containers:
+        - name: order
+          image: helios/order:local
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-pg, key: orders } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-jwt, key: secret } }
+          readinessProbe: { httpGet: { path: /readyz, port: http } }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: order }
+spec:
+  selector: { app: order }
+  ports: [{ port: 8080, targetPort: http }]

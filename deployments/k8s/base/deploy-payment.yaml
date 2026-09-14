@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  labels: { app: payment, app.kubernetes.io/part-of: helios }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: payment } }
+  template:
+    metadata:
+      labels: { app: payment, app.kubernetes.io/part-of: helios }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080" }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: payment
+          image: helios/payment:local
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-pg, key: payment } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-jwt, key: secret } }
+            - name: PSP_FAILURE_RATE_PCT
+              value: "0"
+          readinessProbe: { httpGet: { path: /readyz, port: http } }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payment }
+spec:
+  selector: { app: payment }
+  ports: [{ port: 8080, targetPort: http }]

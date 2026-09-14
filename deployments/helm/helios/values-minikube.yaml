@@ -1,0 +1,44 @@
+# Minikube / local laptop profile for Helios.
+namespace: helios
+imageTag: minikube
+imagePullPolicy: IfNotPresent
+
+apps:
+  identity:
+    wait: "until nc -z postgres 5432 && nc -z redis 6379; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_IDENTITY
+  catalog:
+    wait: "until nc -z postgres 5432 && nc -z aerospike 3000 && nc -z kafka 9092; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_CATALOG
+  inventory:
+    wait: "until nc -z postgres 5432 && nc -z redis 6379 && nc -z kafka 9092; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_INVENTORY
+    grpc: true
+  order:
+    wait: "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_ORDERS
+    grpc: true
+  payment:
+    wait: "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_PAYMENT
+    grpc: true
+  fulfillment:
+    wait: "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_FULFILLMENT
+    grpc: true
+  orchestrator:
+    wait: "until nc -z postgres 5432 && nc -z kafka 9092 && nc -z order 9090 && nc -z inventory 9090 && nc -z payment 9090 && nc -z fulfillment 9090; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_ORCHESTRATOR
+  search:
+    wait: "until nc -z kafka 9092 && nc -z elasticsearch 9200; do sleep 2; done"
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits: { memory: 160Mi }
+  notification:
+    wait: "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"
+    postgresSecretKey: POSTGRES_DSN_NOTIFICATION
+  gateway:
+    wait: "until nc -z redis 6379 && nc -z identity 8080 && nc -z orchestrator 8080; do sleep 2; done"
+    serviceType: NodePort
+    nodePort: 30080
+    liveness: true

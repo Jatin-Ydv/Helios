@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: helios
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pdb.yaml
+  - hpa.yaml
+  - deploy-gateway.yaml
+  - deploy-identity.yaml
+  - deploy-catalog.yaml
+  - deploy-inventory.yaml
+  - deploy-order.yaml
+  - deploy-payment.yaml
+  - deploy-orchestrator.yaml

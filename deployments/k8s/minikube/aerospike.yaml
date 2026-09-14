@@ -1,0 +1,94 @@
+# Single-node Aerospike CE for local/minikube learning.
+# Production would be a multi-node cluster with replication-factor >= 2.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aerospike-config
+data:
+  aerospike.conf: |
+    service {
+      cluster-name helios
+      proto-fd-max 15000
+    }
+    logging {
+      console {
+        context any info
+      }
+    }
+    network {
+      service {
+        address any
+        port 3000
+      }
+      heartbeat {
+        mode mesh
+        address any
+        port 3002
+        interval 150
+        timeout 10
+      }
+      fabric {
+        port 3001
+      }
+      info {
+        port 3003
+      }
+    }
+    namespace helios {
+      replication-factor 1
+      storage-engine memory {
+        data-size 256M
+      }
+      default-ttl 0
+      nsup-period 120
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerospike
+  labels: { app: aerospike }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: aerospike } }
+  template:
+    metadata:
+      labels: { app: aerospike }
+    spec:
+      containers:
+        - name: aerospike
+          image: aerospike/aerospike-server:7.2
+          args: ["--config-file", "/etc/aerospike/aerospike.conf"]
+          ports:
+            - { containerPort: 3000, name: service }
+            - { containerPort: 3001, name: fabric }
+            - { containerPort: 3002, name: heartbeat }
+            - { containerPort: 3003, name: info }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/aerospike
+          readinessProbe:
+            tcpSocket: { port: service }
+            initialDelaySeconds: 8
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: service }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 384Mi }
+            limits: { memory: 512Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: aerospike-config
+---
+apiVersion: v1
+kind: Service
+metadata: { name: aerospike }
+spec:
+  selector: { app: aerospike }
+  ports:
+    - { name: service, port: 3000, targetPort: service }
+    - { name: info, port: 3003, targetPort: info }

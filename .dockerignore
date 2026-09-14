@@ -1,0 +1,10 @@
+.git
+.idea
+.vscode
+bin
+tmp
+data
+*.md
+deployments/k8s
+docs
+testdata

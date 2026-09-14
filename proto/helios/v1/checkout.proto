@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package helios.v1;
+
+option go_package = "github.com/helios-commerce/helios/gen/helios/v1;heliosv1";
+
+// Internal checkout mesh (orchestrator → downstream). Public clients still use HTTP/JSON
+// via the gateway. Auth is gRPC metadata: x-helios-internal, x-tenant-id, x-user-id.
+
+message LineItem {
+  string sku = 1;
+  int64 quantity = 2;
+  int64 unit_amount = 3;
+}
+
+message CreateOrderRequest {
+  repeated LineItem items = 1;
+  string currency = 2;
+  string customer_id = 3;
+}
+
+message CreateOrderResponse {
+  string order_id = 1;
+  int64 amount = 2;
+  string currency = 3;
+  string status = 4;
+}
+
+message OrderIDRequest {
+  string order_id = 1;
+}
+
+message OrderActionResponse {
+  string order_id = 1;
+  string status = 2;
+}
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc ConfirmOrder(OrderIDRequest) returns (OrderActionResponse);
+  rpc FailOrder(OrderIDRequest) returns (OrderActionResponse);
+}
+
+message ReserveRequest {
+  string order_id = 1;
+  string sku = 2;
+  int64 quantity = 3;
+  string warehouse_id = 4;
+}
+
+message ReserveResponse {
+  string reservation_id = 1;
+  string status = 2;
+}
+
+message ReleaseRequest {
+  string order_id = 1;
+  string sku = 2;
+}
+
+message ReleaseResponse {
+  string status = 1;
+}
+
+service InventoryService {
+  rpc Reserve(ReserveRequest) returns (ReserveResponse);
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+}
+
+message AuthorizeRequest {
+  string order_id = 1;
+  int64 amount = 2;
+  string currency = 3;
+}
+
+message AuthorizeResponse {
+  string payment_id = 1;
+  string status = 2;
+  string psp_reference = 3;
+  string reason = 4;
+}
+
+message VoidRequest {
+  string payment_id = 1;
+}
+
+message VoidResponse {
+  string payment_id = 1;
+  string status = 2;
+}
+
+service PaymentService {
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+  rpc Void(VoidRequest) returns (VoidResponse);
+}
+
+message AllocateRequest {
+  string order_id = 1;
+  string warehouse_id = 2;
+}
+
+message AllocateResponse {
+  string shipment_id = 1;
+  string status = 2;
+}
+
+service FulfillmentService {
+  rpc Allocate(AllocateRequest) returns (AllocateResponse);
+}

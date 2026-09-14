@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  labels: { app: payment }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payment } }
+  template:
+    metadata:
+      labels: { app: payment, app.kubernetes.io/part-of: helios }
+    spec:
+      initContainers:
+        - name: wait
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"]
+      containers:
+        - name: payment
+          image: helios/payment:minikube
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { containerPort: 8080, name: http }
+            - { containerPort: 9090, name: grpc }
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-secrets, key: POSTGRES_DSN_PAYMENT } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-secrets, key: JWT_SECRET } }
+            - { name: PSP_FAILURE_RATE_PCT, value: "0" }
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5 }
+          resources:
+            requests: { cpu: 25m, memory: 48Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payment }
+spec:
+  selector: { app: payment }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+    - { name: grpc, port: 9090, targetPort: grpc }

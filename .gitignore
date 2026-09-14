@@ -1,0 +1,24 @@
+bin/
+dist/
+tmp/
+.idea/
+.vscode/
+*.exe
+*.test
+*.out
+coverage.html
+.env
+.env.local
+vendor/
+.DS_Store
+*.log
+data/
+postgres-data/
+redis-data/
+es-data/
+kafka-data/
+
+# Helm
+*.tgz
+charts/
+

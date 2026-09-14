@@ -1,0 +1,37 @@
+groups:
+  - name: helios.slo
+    rules:
+      - alert: HeliosHighErrorRate
+        expr: |
+          sum(rate(helios_gateway_http_requests_total{code=~"5.."}[5m]))
+            /
+          sum(rate(helios_gateway_http_requests_total[5m])) > 0.01
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: Gateway 5xx ratio above 1% (availability SLO 99.9%)
+
+      - alert: HeliosOutboxLag
+        expr: helios_order_outbox_unpublished_count > 500
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Order outbox is not draining — events are stuck in Postgres
+
+      - alert: HeliosCircuitOpen
+        expr: helios_payment_circuit_breaker_state{name="psp"} == 2
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: Payment PSP circuit is open
+
+      - alert: HeliosSagaFailures
+        expr: increase(helios_orchestrator_saga_failed_total[15m]) > 20
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Checkout saga compensation rate is elevated

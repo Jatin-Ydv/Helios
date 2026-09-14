@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  labels: { app: orchestrator, app.kubernetes.io/part-of: helios }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: orchestrator } }
+  template:
+    metadata:
+      labels: { app: orchestrator, app.kubernetes.io/part-of: helios }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080" }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: orchestrator
+          image: helios/orchestrator:local
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ configMapRef: { name: helios-config } }]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom: { secretKeyRef: { name: helios-pg, key: orchestrator } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: helios-jwt, key: secret } }
+            - name: ORDER_URL
+              value: http://order:8080
+            - name: INVENTORY_URL
+              value: http://inventory:8080
+            - name: PAYMENT_URL
+              value: http://payment:8080
+            - name: FULFILLMENT_URL
+              value: http://fulfillment:8080
+          readinessProbe: { httpGet: { path: /readyz, port: http } }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: orchestrator }
+spec:
+  selector: { app: orchestrator }
+  ports: [{ port: 8080, targetPort: http }]

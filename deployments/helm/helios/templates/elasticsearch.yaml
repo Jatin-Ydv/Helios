@@ -1,0 +1,54 @@
+{{- if .Values.elasticsearch.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: elasticsearch
+    {{- include "helios.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: {{ .Values.elasticsearch.image }}
+          env:
+            - { name: discovery.type, value: single-node }
+            - { name: xpack.security.enabled, value: "false" }
+            - { name: xpack.security.http.ssl.enabled, value: "false" }
+            - { name: cluster.routing.allocation.disk.threshold_enabled, value: "false" }
+            - { name: node.store.allow_mmap, value: "false" }
+            - name: ES_JAVA_OPTS
+              value: {{ .Values.elasticsearch.javaOpts | quote }}
+          ports:
+            - { containerPort: 9200, name: http }
+          readinessProbe:
+            httpGet: { path: /_cluster/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+          resources:
+            {{- toYaml .Values.elasticsearch.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: elasticsearch
+    {{- include "helios.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - { port: 9200, targetPort: http }
+{{- end }}
