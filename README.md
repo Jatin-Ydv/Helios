@@ -1,27 +1,26 @@
 # Helios
 
-**A production-shaped, multi-tenant commerce platform in Go.**  
-Catalog, inventory, checkout saga, payments, fulfillment, search (Elasticsearch), CDC (Debezium), Kafka, Redis, Aerospike (product cache), and distributed tracing — designed to be read by a principal engineer, not a bootcamp rubric.
+**A multi-tenant commerce platform in Go** — catalog, inventory, checkout saga, payments, fulfillment, search, and notifications.
 
-Helios exists to demonstrate *how* a senior engineer cuts services, chooses consistency, and operates failure — not to reinvent Shopify.
+Helios is a production-*shaped* reference system: service boundaries, consistency choices, and failure handling over a toy CRUD demo.
 
-| Talk to an interviewer about | Where it lives |
+| Area | Where it lives |
 |---|---|
-| Transactional outbox vs dual-write | `platform/outbox`, `docs/CDC.md` |
-| Debezium on the outbox (WAL, not poll) | `deployments/debezium/` |
-| Orchestrated checkout saga + timeouts | `services/orchestrator`, `docs/SAGAS.md` |
-| gRPC for saga internals (HTTP at the edge) | `proto/helios/v1`, `docs/GRPC.md` |
+| Transactional outbox vs dual-write | `platform/outbox`, [`docs/CDC.md`](docs/CDC.md) |
+| Debezium on the outbox (optional WAL path) | `deployments/debezium/` |
+| Orchestrated checkout saga + compensation | `services/orchestrator`, [`docs/SAGAS.md`](docs/SAGAS.md) |
+| gRPC for saga internals (HTTP at the edge) | `proto/helios/v1`, [`docs/GRPC.md`](docs/GRPC.md) |
 | Inventory reservation, Redis fence, TTL sweeper | `services/inventory` |
 | Circuit breaker + bulkhead around a PSP | `platform/resilience`, `services/payment` |
 | Idempotent consumers (inbox) and DLQ | `platform/inbox`, `platform/kafka` |
-| W3C trace context over HTTP **and** Kafka | `platform/events`, `platform/observability` |
+| W3C trace context over HTTP and Kafka | `platform/events`, `platform/observability` |
 | Money as integer minor units | `platform/money` |
-| Edge rate-limit (token bucket in Redis) | `platform/redisx`, `services/gateway` |
-| Catalog product record cache in Aerospike | `platform/aerospikex`, `docs/AEROSPIKE.md` |
-| Helm packaging (values per environment) | `deployments/helm/helios`, `docs/HELM.md` |
-| CQRS search projection into Elasticsearch | `services/search` |
+| Edge rate limit (token bucket in Redis) | `platform/redisx`, `services/gateway` |
+| Catalog product record cache (Aerospike) | `platform/aerospikex`, [`docs/AEROSPIKE.md`](docs/AEROSPIKE.md) |
+| Helm packaging | `deployments/helm/helios`, [`docs/HELM.md`](docs/HELM.md) |
+| CQRS search projection (Elasticsearch) | `services/search` |
 
-Architecture deep-dives: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/SAGAS.md`](docs/SAGAS.md) · [`docs/CDC.md`](docs/CDC.md) · [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) · [`docs/AEROSPIKE.md`](docs/AEROSPIKE.md) · [`docs/GRPC.md`](docs/GRPC.md) · [`docs/HELM.md`](docs/HELM.md)
+Deep dives: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/SAGAS.md`](docs/SAGAS.md) · [`docs/CDC.md`](docs/CDC.md) · [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) · [`docs/AEROSPIKE.md`](docs/AEROSPIKE.md) · [`docs/GRPC.md`](docs/GRPC.md) · [`docs/HELM.md`](docs/HELM.md)
 
 ---
 
@@ -36,8 +35,8 @@ Architecture deep-dives: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`doc
         ▼          ▼            ▼            ▼          ▼
    Identity    Catalog     Orchestrator    Search   Notification
                    │            │
-                   │            ├─ Order
-        Aerospike  │            ├─ Inventory ── Postgres (row lock + version)
+                   │            ├─ Order        (gRPC from orchestrator)
+        Aerospike  │            ├─ Inventory
         product    │            ├─ Payment ──── circuit breaker ── PSP
         cache      │            └─ Fulfillment
                    │
@@ -52,40 +51,41 @@ Jaeger ◄── OTLP/HTTP from every process
 Prometheus ── scrape /metrics
 ```
 
-Ten services, **database per bounded context**, one Kafka cluster, one Redis, one Aerospike (catalog cache), one ES.
+Ten services, **database per bounded context**, shared Kafka, Redis, Aerospike (catalog cache), and Elasticsearch.
 
 ---
 
 ## Quick start
 
-You want **8+ GB RAM**. ES + Kafka are not toys. On a laptop, prefer minikube (below) over Compose with all sidecar UIs.
+Prefer **8+ GB RAM**. Elasticsearch and Kafka are heavy; on a laptop, minikube is usually better than full Compose with every UI sidecar.
 
-### Kubernetes (minikube) — recommended to run locally
-
-Images are built **inside minikube's Docker daemon** so kubelet never tries to pull `helios/*` from a registry. One replica each, small heaps.
+### Kubernetes (minikube) — recommended
 
 ```bash
-make minikube-up     # start cluster, build 10 images, apply kustomize overlay
-make helm-up         # alternatively: Helm install/upgrade with values-minikube.yaml
-make minikube-demo   # same checkout flow through the NodePort gateway
-make minikube-down   # minikube delete
-make helm-down       # uninstall Helm release only
+make minikube-up     # start cluster, build images, apply kustomize overlay
+make helm-up         # or: Helm install/upgrade with values-minikube.yaml
+make minikube-demo   # end-to-end checkout through the gateway
+make minikube-down   # delete the minikube cluster
+make helm-down       # uninstall the Helm release only
 ```
+
 | Surface | How to open |
 |---|---|
-| Gateway | `kubectl -n helios port-forward svc/gateway 8080:8080` then http://localhost:8080 |
-| Jaeger | `kubectl -n helios port-forward svc/jaeger 16686:16686` then http://localhost:16686 |
+| Gateway | `kubectl -n helios port-forward svc/gateway 8080:8080` → http://localhost:8080 |
+| Jaeger | `kubectl -n helios port-forward svc/jaeger 16686:16686` → http://localhost:16686 |
 
-Docker Desktop + WSL often cannot hit `$(minikube ip):30080` directly; port-forward is the reliable path. Native Linux Docker Engine can use the NodePorts (gateway `30080`, Jaeger `30686`).
+On some Docker Desktop / WSL setups, NodePorts on `$(minikube ip)` are unreachable; port-forward is the reliable path. Native Linux Docker Engine can use NodePorts (gateway `30080`, Jaeger `30686`).
 
-Manifests: `deployments/k8s/minikube/` (Postgres, Redis, Kafka, ES, Jaeger + all 10 services). The production-shaped Deployments/HPA/PDBs live under `deployments/k8s/base/`.
+Manifests: `deployments/k8s/minikube/`. Production-shaped Deployments / HPA / PDBs: `deployments/k8s/base/`. Helm chart: `deployments/helm/helios/`.
 
-### Docker Compose (full sidecar stack)
+### Docker Compose
 
 ```bash
 make up          # infra + all services
 make connectors  # optional: register Debezium outbox connectors
-make demo        # register tenant, catalog SKU, stock it, checkout
+make demo        # register tenant → product → stock → checkout
+make test
+make down        # tear down (including volumes)
 ```
 
 | Surface | URL |
@@ -98,15 +98,10 @@ make demo        # register tenant, catalog SKU, stock it, checkout
 | Kafka Connect | http://localhost:8083 |
 | Elasticsearch | http://localhost:9200 |
 
-```bash
-make test        # unit tests for money, breakers, envelopes
-make down        # destroy volumes too
-```
-
-Run a single service against compose infra:
+Run one service against Compose infra:
 
 ```bash
-export POSTGRES_DSN='postgres://helios:helios@localhost:5432/order?sslmode=disable'
+export POSTGRES_DSN='postgres://helios:helios@localhost:5432/orders?sslmode=disable'
 export KAFKA_BROKERS=localhost:9094
 export REDIS_ADDR=localhost:6379
 export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4318
@@ -117,59 +112,57 @@ go run ./services/order/cmd/order
 
 ## Request path (checkout)
 
-1. `POST /v1/auth/register` — bcrypt, JWT, refresh rotation in Postgres, session hint in Redis.
-2. `POST /v1/products` — writes `products` **and** `outbox` in one transaction; Aerospike product cache updated (invalidated on update/delete).
-3. `POST /v1/inventory/stock` — `on_hand` for `(tenant, warehouse, sku)`.
-4. `POST /v1/checkout` — orchestrator:
+1. `POST /v1/auth/register` — bcrypt, JWT, refresh rotation in Postgres; session hint in Redis.
+2. `POST /v1/products` — writes `products` and `outbox` in one transaction; Aerospike cache updated (invalidated on update/delete).
+3. `POST /v1/inventory/stock` — set `on_hand` for `(tenant, warehouse, sku)`.
+4. `POST /v1/checkout` — orchestrator saga over **gRPC**:
    - create `pending` order (idempotency key)
    - reserve qty (Redis lock + `SELECT FOR UPDATE` + fencing token + 15m TTL)
    - authorize payment (retries, bulkhead, breaker)
    - confirm order, allocate shipment
-   - on any failure: compensate (release, void, fail order)
-5. Async: outbox relay (or Debezium) publishes to Kafka; search indexes the product; notification records the confirmation.
+   - on failure: compensate (release, void, fail order)
+5. Async: outbox relay (or Debezium) → Kafka → search indexes the product; notification records confirmation.
 
-Open the checkout trace in Jaeger. You should see one trace covering four downstream HTTP calls plus Kafka produce spans.
+In Jaeger, one checkout trace should span orchestrator → order / inventory / payment / fulfillment plus Kafka produce spans.
 
 ---
 
-## Design rules this repo refuses to break
+## Design rules
 
-1. **No distributed transactions.** Sagas and outbox only.
-2. **No floats in money.** `int64` minor units + ISO currency.
-3. **No business logic in the gateway.** Routing, auth, rate limits.
-4. **No cache as source of truth for stock.** Postgres is the ledger; Redis is the mutex; Aerospike is the product read cache only.
-5. **No silent event versioning.** `order.created.v1` is a contract. Breaking changes are `v2`.
-6. **No liveness probe that pings Kafka.** Liveness = process. Readiness = dependencies.
-7. **Graceful shutdown is LIFO:** stop ready → drain HTTP → close consumers → flush traces.
+1. **No distributed transactions** across services — sagas and outbox only.
+2. **No floats for money** — `int64` minor units + ISO currency.
+3. **No business logic in the gateway** — routing, auth, rate limits.
+4. **No cache as source of truth for stock** — Postgres is the ledger; Redis is the mutex; Aerospike is the product read cache only.
+5. **No silent event versioning** — `order.created.v1` is a contract; breaking changes are `v2`.
+6. **Liveness ≠ readiness** — liveness is process health; readiness checks dependencies.
+7. **Graceful shutdown is LIFO** — stop ready → drain HTTP → close consumers → flush traces.
 
 ---
 
 ## Repository layout
 
 ```
-platform/           reusable infrastructure (the actual senior work)
-  outbox/ inbox/ kafka/ resilience/ observability/ redisx/ aerospikex/ auth/ …
-services/           one binary per bounded context, hexagonal-ish
+platform/           shared libraries (outbox, kafka, resilience, aerospikex, …)
+services/           one binary per bounded context
   */cmd/*/main.go   composition root
   */migrations/     SQL applied at boot
 deployments/
   docker/           Dockerfile, topic + database init
   debezium/         Kafka Connect connector JSON
   observability/    Prometheus, Grafana, alert rules
-  k8s/base/         Deployments, HPA, PDBs, kustomize
-proto/              schema of record for the event envelope
-docs/               the decisions, not the generated boilerplate
-scripts/demo.sh     one command that exercises the saga
+  k8s/              Kustomize base + minikube overlay
+  helm/helios/      Helm chart + values-minikube.yaml
+proto/              event envelope + checkout gRPC contracts
+gen/                generated protobuf stubs
+docs/               architecture decisions
+scripts/demo.sh     one-command saga exercise
 ```
 
 ---
 
-## Interview notes (steal these)
+## Design rationale (selected)
 
-- **Why outbox on the outbox table for Debezium, not `products`?** Because the envelope is already the public contract; WAL of a business table leaks columns and skips domain invariants.
-- **Why a fencing token on the inventory lock?** Kleppmann: a lock TTL can expire while the holder is paused (GC). The fence is stored on the reservation row; a zombie write with a lower fence is ignored.
-- **Why orchestrate checkout but choreograph notifications?** Because compensation graphs need an owner; fan-out does not.
-- **Why 10% trace sampling in prod?** Cost. Tail-based sampling belongs in the collector, keyed on checkout errors, not on every catalog GET.
-- **What is the availability math?** Payment is the weakest dependency. Bulkhead (16 in-flight) + breaker (5 failures / 8s) isolate it. Checkout degrades to `409 compensated`, not to a thread explosion.
-
-This is the system I want to be on-call for. That is the bar.
+- **Outbox table (not raw `products`) for CDC** — the envelope is the public contract; WAL of a business table leaks columns and skips domain shaping.
+- **Fencing token on inventory locks** — lock TTLs can expire while a holder is paused (e.g. GC); the fence on the reservation row rejects zombie writes.
+- **Orchestrate checkout, choreograph notifications** — compensation needs an owner; fan-out does not.
+- **Payment isolation** — bulkhead + circuit breaker keep PSP latency from exhausting the mesh; failed checkout returns compensated state instead of cascading load.
