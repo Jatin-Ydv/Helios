@@ -25,11 +25,23 @@ topics=(
   helios.saga.events
   helios.saga.events.dlq
   helios.unknown.events
-  helios.cdc.catalog.outbox
 )
 
 for t in "${topics[@]}"; do
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" --create --if-not-exists \
     --topic "$t" --partitions 6 --replication-factor 1
+done
+
+# Kafka Connect internal topics must be compacted.
+for t in helios.connect.configs helios.connect.offsets helios.connect.status; do
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" --create --if-not-exists \
+    --topic "$t" --partitions 1 --replication-factor 1 \
+    --config cleanup.policy=compact
+done
+
+# Optional Debezium heartbeat topics (auto.create is off on the broker).
+for t in __debezium-heartbeat.helios.cdc.catalog __debezium-heartbeat.helios.cdc.order; do
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" --create --if-not-exists \
+    --topic "$t" --partitions 1 --replication-factor 1
 done
 echo "topics ready"

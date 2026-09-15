@@ -7,7 +7,7 @@ Helios is a production-*shaped* reference system: service boundaries, consistenc
 | Area | Where it lives |
 |---|---|
 | Transactional outbox vs dual-write | `platform/outbox`, [`docs/CDC.md`](docs/CDC.md) |
-| Debezium on the outbox (optional WAL path) | `deployments/debezium/` |
+| Debezium outbox EventRouter (catalog/order) | `deployments/debezium/`, [`docs/CDC.md`](docs/CDC.md) |
 | Orchestrated checkout saga + compensation | `services/orchestrator`, [`docs/SAGAS.md`](docs/SAGAS.md) |
 | gRPC for saga internals (HTTP at the edge) | `proto/helios/v1`, [`docs/GRPC.md`](docs/GRPC.md) |
 | Inventory reservation, Redis fence, TTL sweeper | `services/inventory` |
@@ -82,7 +82,7 @@ Manifests: `deployments/k8s/minikube/`. Production-shaped Deployments / HPA / PD
 
 ```bash
 make up          # infra + all services
-make connectors  # optional: register Debezium outbox connectors
+make connectors  # register/update Debezium outbox connectors (Compose or port-forward)
 make demo        # register tenant → product → stock → checkout
 make test
 make down        # tear down (including volumes)
@@ -121,7 +121,7 @@ go run ./services/order/cmd/order
    - authorize payment (retries, bulkhead, breaker)
    - confirm order, allocate shipment
    - on failure: compensate (release, void, fail order)
-5. Async: outbox relay (or Debezium) → Kafka → search indexes the product; notification records confirmation.
+5. Async: Debezium (catalog/order) or outbox relay → Kafka → search indexes the product; notification records confirmation.
 
 In Jaeger, one checkout trace should span orchestrator → order / inventory / payment / fulfillment plus Kafka produce spans.
 

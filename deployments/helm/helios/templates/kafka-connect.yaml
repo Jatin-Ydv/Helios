@@ -1,0 +1,162 @@
+{{- if .Values.debezium.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: debezium-connectors
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: kafka-connect
+    {{- include "helios.labels" . | nindent 4 }}
+data:
+{{- range $path, $_ := .Files.Glob "files/debezium/*.json" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-connect
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: kafka-connect
+    {{- include "helios.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-connect
+  template:
+    metadata:
+      labels:
+        app: kafka-connect
+    spec:
+      initContainers:
+        - name: wait
+          image: {{ .Values.busybox.image }}
+          command:
+            - sh
+            - -c
+            - until nc -z kafka 9092 && nc -z postgres 5432; do sleep 2; done
+      containers:
+        - name: connect
+          image: {{ .Values.debezium.image }}
+          env:
+            - { name: BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: GROUP_ID, value: "helios-connect" }
+            - { name: CONFIG_STORAGE_TOPIC, value: "helios.connect.configs" }
+            - { name: OFFSET_STORAGE_TOPIC, value: "helios.connect.offsets" }
+            - { name: STATUS_STORAGE_TOPIC, value: "helios.connect.status" }
+            - { name: CONFIG_STORAGE_REPLICATION_FACTOR, value: "1" }
+            - { name: OFFSET_STORAGE_REPLICATION_FACTOR, value: "1" }
+            - { name: STATUS_STORAGE_REPLICATION_FACTOR, value: "1" }
+            - { name: KEY_CONVERTER, value: "org.apache.kafka.connect.json.JsonConverter" }
+            - { name: VALUE_CONVERTER, value: "org.apache.kafka.connect.json.JsonConverter" }
+            - { name: CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE, value: "false" }
+            - { name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE, value: "false" }
+            - name: KAFKA_HEAP_OPTS
+              value: {{ .Values.debezium.heapOpts | quote }}
+          ports:
+            - { containerPort: 8083, name: rest }
+          readinessProbe:
+            httpGet: { path: /, port: rest }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+            initialDelaySeconds: 20
+          resources:
+            {{- toYaml .Values.debezium.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-connect
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: kafka-connect
+    {{- include "helios.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: kafka-connect
+  ports:
+    - { name: rest, port: 8083, targetPort: rest }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: debezium-register
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "helios.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    helm.sh/hook-weight: "20"
+spec:
+  backoffLimit: 30
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: {{ .Values.debezium.registerImage }}
+          env:
+            - { name: CONNECT_URL, value: "http://kafka-connect:8083" }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              python3 <<'PY'
+              import json, pathlib, time, urllib.error, urllib.request
+
+              connect = "http://kafka-connect:8083"
+              print(f"waiting for kafka connect at {connect}")
+              for _ in range(90):
+                  try:
+                      urllib.request.urlopen(connect + "/", timeout=2).read()
+                      break
+                  except Exception:
+                      time.sleep(2)
+              else:
+                  raise SystemExit("kafka connect not ready")
+
+              for path in sorted(pathlib.Path("/connectors").glob("*.json")):
+                  body = json.loads(path.read_text())
+                  name = body["name"]
+                  raw = path.read_bytes()
+                  print(f"upsert {name} from {path.name}")
+                  req = urllib.request.Request(
+                      connect + "/connectors",
+                      data=raw,
+                      headers={"Content-Type": "application/json"},
+                      method="POST",
+                  )
+                  try:
+                      urllib.request.urlopen(req, timeout=30).read()
+                  except urllib.error.HTTPError as e:
+                      err_body = e.read().decode("utf-8", "replace")
+                      if e.code != 409:
+                          raise SystemExit(f"POST {name} failed: {e.code} {err_body}")
+                      cfg = json.dumps(body["config"]).encode()
+                      put = urllib.request.Request(
+                          f"{connect}/connectors/{name}/config",
+                          data=cfg,
+                          headers={"Content-Type": "application/json"},
+                          method="PUT",
+                      )
+                      urllib.request.urlopen(put, timeout=30).read()
+
+              listing = urllib.request.urlopen(connect + "/connectors", timeout=10).read()
+              print(json.dumps(json.loads(listing), indent=2))
+              PY
+          volumeMounts:
+            - { name: connectors, mountPath: /connectors }
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { memory: 128Mi }
+      volumes:
+        - name: connectors
+          configMap:
+            name: debezium-connectors
+{{- end }}

@@ -57,6 +57,10 @@ spec:
                   name: helios-secrets
                   key: {{ $app.postgresSecretKey }}
             {{- end }}
+            {{- range $ek, $ev := dig "env" dict $app }}
+            - name: {{ $ek }}
+              value: {{ $ev | quote }}
+            {{- end }}
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 5

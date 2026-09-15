@@ -113,7 +113,7 @@ services:
     restart: "no"
 
   kafka-connect:
-    image: debezium/connect:2.7
+    image: debezium/connect:2.7.3.Final
     ports: ["8083:8083"]
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
@@ -133,6 +133,56 @@ services:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  connectors-init:
+    image: python:3.12-alpine
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      CONNECT_URL: http://kafka-connect:8083
+    volumes:
+      - ./deployments/debezium:/connectors:ro
+    entrypoint: ["python3", "-c"]
+    command:
+      - |
+        import json, pathlib, time, urllib.error, urllib.request, os
+        connect = os.environ["CONNECT_URL"]
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(connect + "/", timeout=2).read()
+                break
+            except Exception:
+                time.sleep(2)
+        else:
+            raise SystemExit("connect not ready")
+        for path in sorted(pathlib.Path("/connectors").glob("*.json")):
+            body = json.loads(path.read_text())
+            name = body["name"]
+            print("upsert", name)
+            req = urllib.request.Request(
+                connect + "/connectors", data=path.read_bytes(),
+                headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                urllib.request.urlopen(req, timeout=30).read()
+            except urllib.error.HTTPError as e:
+                if e.code != 409:
+                    raise SystemExit(f"POST {name}: {e.code} {e.read()}")
+                put = urllib.request.Request(
+                    f"{connect}/connectors/{name}/config",
+                    data=json.dumps(body["config"]).encode(),
+                    headers={"Content-Type": "application/json"}, method="PUT")
+                urllib.request.urlopen(put, timeout=30).read()
+        print(urllib.request.urlopen(connect + "/connectors").read().decode())
+    restart: "no"
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
@@ -205,7 +255,16 @@ services:
     environment:
       <<: *app-env
       POSTGRES_DSN: postgres://helios:helios@postgres:5432/catalog?sslmode=disable
+      # Debezium EventRouter owns catalog outbox → helios.catalog.events
+      OUTBOX_RELAY_ENABLED: "false"
     ports: ["8102:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      aerospike: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+      jaeger: { condition: service_started }
+      connectors-init: { condition: service_completed_successfully }
 
   inventory:
     <<: *app
@@ -221,7 +280,15 @@ services:
     environment:
       <<: *app-env
       POSTGRES_DSN: postgres://helios:helios@postgres:5432/orders?sslmode=disable
+      OUTBOX_RELAY_ENABLED: "false"
     ports: ["8103:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      aerospike: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+      jaeger: { condition: service_started }
+      connectors-init: { condition: service_completed_successfully }
 
   payment:
     <<: *app

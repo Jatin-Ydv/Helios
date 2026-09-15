@@ -38,17 +38,19 @@ Two ways to drain `outbox`, both valid, both in this repo:
 ```
 Postgres commit
     │
-    ├─► [dev] Go relay  SELECT … FOR UPDATE SKIP LOCKED  ──► Kafka
+    ├─► [relay] Go poller  SELECT … FOR UPDATE SKIP LOCKED  ──► Kafka
+    │         (inventory, payment, … ; OUTBOX_RELAY_ENABLED=true)
     │
-    └─► [prod] Debezium pgoutput on table `outbox`
-            WAL ──► Connect ──► Kafka
+    └─► [CDC] Debezium Outbox EventRouter on table `outbox`
+            WAL ──► Connect ──► helios.{catalog|order}.events
+            (Helm minikube: catalog + order; OUTBOX_RELAY_ENABLED=false)
 ```
 
 The Go relay is an **application-level poller**. It is easy to run, easy to debug, and has a visible lag metric (`helios_*_outbox_unpublished_count`).
 
-Debezium is the **production preference** at scale: no polling interval, no extra DB load proportional to tick rate, and it survives a total replay from WAL if you keep slots. The connector JSON lives in `deployments/debezium/`. Postgres is started with `wal_level=logical`.
+Debezium is the **production preference** for high-volume outboxes: no polling interval, no extra DB load proportional to tick rate, and it survives a total replay from WAL if you keep slots. Connectors live in `deployments/debezium/` and use EventRouter so consumers still see the domain envelope on `helios.catalog.events` / `helios.order.events`. Postgres is started with `wal_level=logical`.
 
-You do **not** run both against the same rows in production without a published-at filter — you would double-publish. Pick one. Helios defaults to the relay locally so `docker compose up` does not depend on Connect being healthy.
+You do **not** run both against the same rows — you would double-publish. Pick one per service.
 
 ## Partitioning and ordering
 

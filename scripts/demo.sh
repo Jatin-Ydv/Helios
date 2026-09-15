@@ -41,7 +41,7 @@ CHECKOUT=$(curl -sS -X POST "$GW/v1/checkout" -H "$AUTH" -H 'Idempotency-Key: de
 echo "$CHECKOUT"
 
 echo "== search (CDC / outbox → ES, may lag a second)"
-sleep 2
+sleep 4
 curl -sS "$GW/v1/search/products?q=observability" -H "$AUTH"
 echo
 echo "open Jaeger at http://localhost:16686 and search service=orchestrator"

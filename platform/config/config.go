@@ -29,6 +29,7 @@ type Config struct {
 	GRPCAddr           string
 	ShutdownWait       time.Duration
 	OutboxPoll         time.Duration
+	OutboxRelayEnabled bool
 	SagaTimeout        time.Duration
 }
 
@@ -51,6 +52,9 @@ func Load(service string) Config {
 		GRPCAddr:           env("GRPC_ADDR", ":9090"),
 		ShutdownWait:       envDur("SHUTDOWN_TIMEOUT", 20*time.Second),
 		OutboxPoll:         envDur("OUTBOX_POLL_INTERVAL", 400*time.Millisecond),
+		// Default on so local compose works without Kafka Connect. Set false when
+		// Debezium owns outbox publish (catalog/order on Helm minikube).
+		OutboxRelayEnabled: envBool("OUTBOX_RELAY_ENABLED", true),
 		SagaTimeout:        envDur("SAGA_TIMEOUT", 30*time.Second),
 	}
 }
@@ -70,6 +74,21 @@ func envDur(k string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+func envBool(k string, def bool) bool {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return def
+	}
 }
 
 func EnvInt(k string, def int) int {

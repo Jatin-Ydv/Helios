@@ -78,6 +78,10 @@ func (rt *Runtime) StartOutboxRelay(ctx context.Context) {
 	if rt.Pool == nil || rt.Pub == nil {
 		return
 	}
+	if !rt.Cfg.OutboxRelayEnabled {
+		rt.Log.Info("outbox relay disabled; Debezium (or another publisher) owns outbox → Kafka")
+		return
+	}
 	relay := &outbox.Relay{
 		Pool:     rt.Pool,
 		Pub:      rt.Pub,

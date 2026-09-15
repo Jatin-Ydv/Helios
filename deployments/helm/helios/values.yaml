@@ -92,6 +92,15 @@ jaeger:
 kafkaInit:
   enabled: true
 
+debezium:
+  enabled: false
+  image: debezium/connect:2.7.3.Final
+  registerImage: python:3.12-alpine
+  heapOpts: "-Xms256m -Xmx256m"
+  resources:
+    requests: { cpu: 50m, memory: 384Mi }
+    limits: { memory: 640Mi }
+
 # App defaults (merged per-service in values-minikube)
 appDefaults:
   replicas: 1

@@ -3,6 +3,9 @@ namespace: helios
 imageTag: minikube
 imagePullPolicy: IfNotPresent
 
+debezium:
+  enabled: true
+
 apps:
   identity:
     wait: "until nc -z postgres 5432 && nc -z redis 6379; do sleep 2; done"
@@ -10,6 +13,9 @@ apps:
   catalog:
     wait: "until nc -z postgres 5432 && nc -z aerospike 3000 && nc -z kafka 9092; do sleep 2; done"
     postgresSecretKey: POSTGRES_DSN_CATALOG
+    # Debezium EventRouter publishes catalog outbox → helios.catalog.events
+    env:
+      OUTBOX_RELAY_ENABLED: "false"
   inventory:
     wait: "until nc -z postgres 5432 && nc -z redis 6379 && nc -z kafka 9092; do sleep 2; done"
     postgresSecretKey: POSTGRES_DSN_INVENTORY
@@ -18,6 +24,8 @@ apps:
     wait: "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"
     postgresSecretKey: POSTGRES_DSN_ORDERS
     grpc: true
+    env:
+      OUTBOX_RELAY_ENABLED: "false"
   payment:
     wait: "until nc -z postgres 5432 && nc -z kafka 9092; do sleep 2; done"
     postgresSecretKey: POSTGRES_DSN_PAYMENT

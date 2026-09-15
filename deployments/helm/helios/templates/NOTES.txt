@@ -9,9 +9,18 @@ Port-forward (WSL / Docker Desktop):
 
   kubectl -n {{ .Values.namespace }} port-forward svc/gateway 18080:8080
   kubectl -n {{ .Values.namespace }} port-forward svc/jaeger 16686:16686
+{{- if .Values.debezium.enabled }}
+  kubectl -n {{ .Values.namespace }} port-forward svc/kafka-connect 8083:8083
+{{- end }}
 
 Then:
 
   GATEWAY_URL=http://127.0.0.1:18080 make demo
+{{- if .Values.debezium.enabled }}
 
-Docs: docs/HELM.md
+Debezium: catalog/order outbox → Kafka via EventRouter
+  (OUTBOX_RELAY_ENABLED=false on those services). Status:
+  curl -s http://127.0.0.1:8083/connectors | jq
+{{- end }}
+
+Docs: docs/HELM.md · docs/CDC.md

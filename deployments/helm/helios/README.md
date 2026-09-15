@@ -57,6 +57,8 @@ make helm-down    # uninstall release (leaves PVCs/emptyDirs as applicable)
 | `apps.*.replicas` | scale a service |
 | `apps.*.resources` | memory/CPU |
 | `secrets.JWT_SECRET` | never commit real prod secrets; use `--set` / Sealed Secrets / External Secrets in real envs |
+| `debezium.enabled` | Deploy Kafka Connect + register outbox connectors (catalog/order) |
+| `apps.catalog.env.OUTBOX_RELAY_ENABLED` | Must be `"false"` when Debezium owns catalog publish |
 | `kafka.heapOpts` / `elasticsearch.javaOpts` | laptop vs server heaps |
 
 ## Lint locally
